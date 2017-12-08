@@ -32,8 +32,12 @@ module Webpack
           if paths
             # Can be either a string or an array of strings.
             # Do not include source maps as they are not javascript
-            [paths].flatten.reject { |p| p =~ /.*\.map$/ }.map do |p|
-              "/#{::Rails.configuration.webpack.public_path}/#{p}"
+            
+            prefix = ""
+            prefix = "/" unless ::Rails.configuration.webpack.public_path.stars_with?('http')
+            
+            [paths].flatten.reject { |p| p =~ /.*\.map$/ }.map do |p| 
+              "#{prefix}#{::Rails.configuration.webpack.public_path}/#{p}"
             end
           else
             raise EntryPointMissingError, "Can't find entry point '#{source}' in webpack manifest"
