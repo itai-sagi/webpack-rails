@@ -34,7 +34,7 @@ module Webpack
             # Do not include source maps as they are not javascript
             
             prefix = ""
-            prefix = "/" unless ::Rails.configuration.webpack.public_path.stars_with?('http')
+            prefix = "/" unless ::Rails.configuration.webpack.public_path.starts_with?('http')
             
             [paths].flatten.reject { |p| p =~ /.*\.map$/ }.map do |p| 
               "#{prefix}#{::Rails.configuration.webpack.public_path}/#{p}"
