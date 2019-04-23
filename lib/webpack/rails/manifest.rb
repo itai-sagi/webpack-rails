@@ -44,7 +44,7 @@ module Webpack
           end
         end
 
-        cattr_accessor(:cache_ttl)  { ::Rails.configuration.webpack.cache_duration || 60.seconds }
+        cattr_accessor(:cache_ttl)  { 60.seconds }
         cattr_accessor(:lock) { Mutex.new }
 
         private
