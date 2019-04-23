@@ -32,17 +32,20 @@ module Webpack
           if paths
             # Can be either a string or an array of strings.
             # Do not include source maps as they are not javascript
-            
+
             prefix = ""
             prefix = "/" unless ::Rails.configuration.webpack.public_path.starts_with?('http')
-            
-            [paths].flatten.reject { |p| p =~ /.*\.map$/ }.map do |p| 
+
+            [paths].flatten.reject { |p| p =~ /.*\.map$/ }.map do |p|
               "#{prefix}#{::Rails.configuration.webpack.public_path}/#{p}"
             end
           else
             raise EntryPointMissingError, "Can't find entry point '#{source}' in webpack manifest"
           end
         end
+
+        mattr_accessor(:cache_ttl)  { Rails.configuration.webpack.cache_duration || 60.seconds }
+        mattr_accessor(:lock) { Mutex.new }
 
         private
 
@@ -51,21 +54,38 @@ module Webpack
         end
 
         def manifest
-          if ::Rails.configuration.webpack.dev_server.enabled
-            # Don't cache if we're in dev server mode, manifest may change ...
-            load_manifest
-          else
-            # ... otherwise cache at class level, as JSON loading/parsing can be expensive
-            @manifest ||= load_manifest
+          cache!
+          @manifest
+        end
+
+        def cache!
+          return unless should_cache?
+
+          lock.synchronize do
+            fetch!
           end
         end
 
+        def should_cache?
+          return true unless @manifest
+          return true if ::Rails.configuration.webpack.dev_server.enabled
+
+          seconds_since_last_cached = @last_cached ? Time.now.to_f - @last_cached : Float::INFINITY
+          seconds_since_last_cached > cache_ttl
+        end
+
+        def fetch!
+          @manifest = load_manifest
+          @last_cached = Time.now.to_f
+        end
+
         def load_manifest
-          data = if ::Rails.configuration.webpack.dev_server.enabled
-            load_dev_server_manifest
-          else
-            load_static_manifest
-          end
+          data =
+            if ::Rails.configuration.webpack.dev_server.enabled
+              load_dev_server_manifest
+            else
+              load_static_manifest
+            end
           JSON.parse(data)
         end
 
@@ -81,16 +101,19 @@ module Webpack
         end
 
         def load_static_manifest
-          File.read(static_manifest_path)
+          open(static_manifest_path).read
         rescue => e
           raise ManifestLoadError.new("Could not load compiled manifest from #{static_manifest_path} - have you run `rake webpack:compile`?", e)
         end
 
         def static_manifest_path
-          ::Rails.root.join(
-            ::Rails.configuration.webpack.output_dir,
-            ::Rails.configuration.webpack.manifest_filename
-          )
+          manifest_path = [::Rails.configuration.webpack.output_dir,
+                           ::Rails.configuration.webpack.manifest_filename].join('/')
+          if ::Rails.configuration.webpack.output_dir.starts_with?('http')
+            manifest_path
+          else
+            ::Rails.root.join(manifest_path)
+          end
         end
 
         def dev_server_path
